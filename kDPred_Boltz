@@ -1,0 +1,113 @@
+import json
+import argparse
+import pandas as pd
+from pathlib import Path
+import warnings
+from Bio.PDB import MMCIFParser
+from Bio.PDB.PDBExceptions import PDBConstructionWarning
+
+def get_rna_sequence(cif_path):
+    """
+    Lee un archivo .cif, identifica la cadena de ARN y extrae su secuencia.
+    """
+    parser = MMCIFParser(QUIET=True)
+    try:
+        # Silenciar advertencias comunes de formato en modelos generados por IA
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", PDBConstructionWarning)
+            structure = parser.get_structure("complex", cif_path)
+        
+        # Iterar sobre las cadenas para encontrar el ARN
+        for chain in structure.get_chains():
+            seq = ""
+            is_rna = False
+            for residue in chain:
+                resname = residue.get_resname().strip().upper()
+                # Nucleótidos estándar de ARN en formato PDB/mmCIF
+                if resname in ['A', 'U', 'C', 'G', 'ADE', 'URA', 'CYT', 'GUA']:
+                    is_rna = True
+                    # Convertir a código de una letra si está en formato de 3 letras
+                    letra = resname[0] if len(resname) == 3 else resname
+                    seq += letra
+            
+            # Si se detecta ARN en esta cadena, se devuelve la secuencia
+            if is_rna and len(seq) > 0:
+                return seq
+                
+        return "No_detectado"
+    except Exception as e:
+        return f"Error_lectura"
+
+def main():
+    parser = argparse.ArgumentParser(description="Calcula kD, ΔG y extrae la secuencia de ARN desde resultados de Boltz-2")
+    parser.add_argument("-i", "--input", required=True, help="Directorio principal de predicciones de Boltz")
+    parser.add_argument("-o", "--output", default="12_termodinamica_boltz2.csv", help="Archivo de salida CSV")
+    args = parser.parse_args()
+
+    input_dir = Path(args.input)
+    # Busca recursivamente todos los archivos JSON de afinidad
+    json_files = list(input_dir.rglob("*.json"))
+    
+    data_list = []
+    
+    print(f"Escaneando directorio: {input_dir}")
+    print("Extrayendo termodinámica y secuencias estructurales...\n")
+    
+    for json_file in json_files:
+        try:
+            with open(json_file, 'r') as f:
+                data = json.load(f)
+                
+            # Identifica si el JSON contiene la métrica de afinidad de Boltz
+            if "affinity_pred_value" in data:
+                log_ic50_uM = data["affinity_pred_value"]
+                
+                # Limpieza del nombre para obtener el ID del modelo
+                model_id = json_file.stem.replace("_affinity", "").replace("_confidence", "")
+                
+                # Fórmulas de conversión termodinámica
+                ic50_uM = 10 ** log_ic50_uM
+                delta_g_kcal = (6 - log_ic50_uM) * 1.364
+                kd_uM = ic50_uM / 2.0
+                kd_nM = kd_uM * 1000.0
+                
+                # Buscar el archivo .cif en la misma carpeta para extraer el ARN
+                cif_files = list(json_file.parent.glob("*.cif"))
+                rna_seq = "No_encontrado"
+                if cif_files:
+                    # Toma el primer archivo .cif disponible en ese directorio de modelo
+                    rna_seq = get_rna_sequence(cif_files[0])
+                
+                data_list.append({
+                    "Model_ID": model_id,
+                    "RNA_Sequence": rna_seq,
+                    "Affinity_Pred_Value": round(log_ic50_uM, 4),
+                    "Delta_G_kcal_mol": round(delta_g_kcal, 4),
+                    "IC50_uM": round(ic50_uM, 4),
+                    "Kd_uM": round(kd_uM, 4),
+                    "Kd_nM": round(kd_nM, 4)
+                })
+        except Exception as e:
+            print(f"Error procesando {json_file.name}: {e}")
+
+    if not data_list:
+        print(" No se encontraron métricas de afinidad en los archivos .json.")
+        return
+
+    # Ordenar por mayor afinidad (Delta G más negativo)
+    df = pd.DataFrame(data_list)
+    df = df.sort_values(by="Delta_G_kcal_mol", ascending=True)
+    
+    df.to_csv(args.output, index=False)
+    
+    print(f" Análisis Finalizado. Se procesaron {len(df)} modelos.")
+    print(f"Resultados guardados en: {args.output}")
+    print("\nTop 5 Modelos con mayor afinidad termodinámica:")
+    
+    # Ajustar pandas para mostrar bien las secuencias largas en la terminal
+    pd.set_option('display.max_columns', None)
+    pd.set_option('display.width', 150)
+    print(df[['Model_ID', 'RNA_Sequence', 'Delta_G_kcal_mol', 'Kd_nM']].head(5).to_string(index=False))
+
+if __name__ == "__main__":
+    main()

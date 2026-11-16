@@ -85,7 +85,7 @@ def process_model(full_path, batch_mode=False):
         if copied: os.remove(local_file)
         shutil.rmtree(latest_folder, ignore_errors=True)
         if not batch_mode:
-            print(f"\n[!] PRA-PRED run but didn't generate result.txt in {pdb_name}")
+            print(f"\n[!] PRA-PRED ran but didn't generate result.txt in {pdb_name}")
         return False
         
     with open(result_file, "r") as f:
@@ -111,7 +111,7 @@ def process_model(full_path, batch_mode=False):
     csv_line = ";".join(data)
     header = "Protein;Model;Protein_Chain;RNA_Chain;RNA_Sequence;Delta_G(kcal/mol);Kd(M)\n"
     
-#change folder name for your confort 
+    # change folder name for your convenience
     resultados_dir = "01_resultados" 
     os.makedirs(resultados_dir, exist_ok=True)
     
@@ -184,3 +184,6 @@ if __name__ == "__main__":
     else:
         process_model(path)
 EOF
+        
+    latest_folder = folders[0]
+    result_file = os.path.

@@ -41,7 +41,7 @@ def process_model(full_path, batch_mode=False):
         
     local_file = pdb_name + ".pdb"
 
-    # --- Función mejorada para registrar el TIPO de fallo en el CSV ---
+    # --- Improved error detection and recording in CSV ---
     def write_error_to_csv(error_type):
         error_line = f"{protein_name};{pdb_name};{error_type};{error_type};{error_type};{error_type};{error_type}"
         header = "Protein;Model;Protein_Chain;RNA_Chain;RNA_Sequence;Delta_G(kcal/mol);Kd(M)\n"

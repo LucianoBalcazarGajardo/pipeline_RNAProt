@@ -4,7 +4,7 @@ import numpy as np
 import argparse
 import os
 
-def plot_kd(input_csv, img_out, title):
+def plot_raw_kd(input_csv, img_out, txt_out, title):
     # 1. Load CSV
     try:
         df = pd.read_csv(input_csv, sep=";")
@@ -29,13 +29,25 @@ def plot_kd(input_csv, img_out, title):
         print("[!] No viable models to plot.")
         return
 
-    print(f"\n--- Kd DISTRIBUTION ---")
-    print(f"Total models processed: {total_models}")
-    print(f"Plotted models:         {valid_models}")
-    print(f"Best absolute Kd (Min): {df_valid[target_col].min():.2e} M")
-    print(f"Worst absolute Kd (Max):{df_valid[target_col].max():.2e} M\n")
+    # 3. PREPARE AND SAVE TEXT INFO
+    info_text = (
+        f"--- Kd DISTRIBUTION ---\n"
+        f"Total models processed: {total_models}\n"
+        f"Plotted models:         {valid_models}\n"
+        f"Min Kd: {df_valid[target_col].min():.2e} M\n"
+        f"Max Kd:{df_valid[target_col].max():.2e} M\n"
+    )
+    
+    # Print to terminal
+    print(f"\n{info_text}")
 
-    # 3. GENERATE RAW LOGARITHMIC HISTOGRAM (NO LINES)
+    # Write to .txt file
+    os.makedirs(os.path.dirname(os.path.abspath(txt_out)), exist_ok=True)
+    with open(txt_out, "w") as f:
+        f.write(info_text)
+    print(f"[OK] Stats info saved at: {txt_out}")
+
+    # 4. GENERATE LOGARITHMIC HISTOGRAM
     plt.figure(figsize=(12, 7))
     
     min_kd, max_kd = df_valid[target_col].min(), df_valid[target_col].max()
@@ -56,14 +68,14 @@ def plot_kd(input_csv, img_out, title):
     plt.savefig(img_out, dpi=300, bbox_inches='tight')
     plt.close()
     
-    print(f"[OK] Raw histogram saved at: {img_out}")
+    print(f"[OK] Raw histogram saved at: {img_out}\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Raw Kd histogram generator.")
     parser.add_argument("-i", "--input", required=True, help="Path to original CSV file")
     parser.add_argument("-o", "--img_out", required=True, help="Output path for PNG image")
+    parser.add_argument("-txt", "--txt_out", required=True, help="Output path for the text info file")
     parser.add_argument("-t", "--title", default="Raw $K_d$ Distribution", help="Plot title")
     
     args = parser.parse_args()
-    plot_kd(args.input, args.img_out, args.title)
-
+    plot_raw_kd(args.input, args.img_out, args.txt_out, args.title)

@@ -65,4 +65,5 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--title", default="Raw $K_d$ Distribution", help="Plot title")
     
     args = parser.parse_args()
-    plot_raw_kd(args.input, args.img_out, args.title)
+    plot_kd(args.input, args.img_out, args.title)
+

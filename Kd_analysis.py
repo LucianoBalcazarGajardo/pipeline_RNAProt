@@ -40,11 +40,11 @@ def analyze_kd(input_csv, img_out, csv_out, top_percent, thresholds, title):
     
     kd_cutoff = df_top[target_col].max()
 
-    print(f"\n--- BINDING AFFINITY ANALYSIS (Kd) ---")
+    print(f"\n--- Kd ANALYSIS ---")
     print(f"Total models processed: {total_models}")
     print(f"Valid models analyzed:  {valid_models}")
-    print(f"Best absolute Kd (Min): {df_sorted[target_col].min():.2e} M")
-    print(f"Worst absolute Kd (Max):{df_sorted[target_col].max():.2e} M")
+    print(f"Min Kd: {df_sorted[target_col].min():.2e} M")
+    print(f"Max Kd:{df_sorted[target_col].max():.2e} M")
     print(f"Top {top_percent}% cutoff:      {kd_cutoff:.2e} M ({num_top} models saved)")
     print(f"Top file saved at:      {csv_out}\n")
 

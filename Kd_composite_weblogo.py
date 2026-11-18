@@ -6,7 +6,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.image as mpimg
-from matplotlib.patches import ConnectionPatch
+from matplotlib.patches import ConnectionPatch, Rectangle
+
 
 def generate_single_weblogo(df_subset, seq_col, tmp_fasta, tmp_png):
     valid_seqs = 0
@@ -33,6 +34,7 @@ def generate_single_weblogo(df_subset, seq_col, tmp_fasta, tmp_png):
     ]
     subprocess.run(command, check=True)
     return True
+
 
 def plot_composite(input_csv, img_out, percentiles, seq_col, title):
     # 1. Load CSV and find Kd column
@@ -89,7 +91,7 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
         if os.path.exists(tmp_fasta):
             os.remove(tmp_fasta)
 
-    # 4. Layout: ligeramente más grande para los WebLogos manteniendo la estructura original
+    # 4. Layout: balanced proportions with larger WebLogos
     fig = plt.figure(figsize=(15, max(7, 2.7 * n_pct)))
     gs = gridspec.GridSpec(
         n_pct, 2,
@@ -98,7 +100,7 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
         hspace=0.15
     )
 
-    # Right panel: Histograma clásico con bordes negros
+    # Right panel: Classic histogram with exact cutoff-aligned bar coloring
     ax_hist = fig.add_subplot(gs[:, 1])
     min_kd, max_kd = df_valid[target_col].min(), df_valid[target_col].max()
     if min_kd <= 0:
@@ -107,19 +109,34 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
     log_min, log_max = np.log10(min_kd), np.log10(max_kd)
     bins = np.logspace(log_min, log_max, 40)
 
-    counts, bin_edges, patches = ax_hist.hist(
-        df_valid[target_col], bins=bins, color="lightgray", edgecolor="black", alpha=0.8
+    # Draw only black edges of histogram bars (above colored fills)
+    counts, bin_edges, _ = ax_hist.hist(
+        df_valid[target_col], bins=bins, facecolor="none", edgecolor="black", zorder=3
     )
 
-    # Colorear cada barra del histograma según el percentil al que pertenece
+    # Define exact color intervals based on each Kd cutoff
     colors = ["#d62728", "#ff7f0e", "#1f77b4", "#9467bd", "#2ca02c"]
-    for left_edge, right_edge, patch in zip(bin_edges[:-1], bin_edges[1:], patches):
-        bin_center = np.sqrt(left_edge * right_edge)  # Centro geométrico en escala log
-        for i, kd_cut in enumerate(cutoffs):
-            if bin_center <= kd_cut:
-                patch.set_facecolor(colors[i % len(colors)])
-                patch.set_alpha(0.55)
-                break
+    intervals = []
+    prev_cut = 0.0
+    for i, kd_cut in enumerate(cutoffs):
+        intervals.append((prev_cut, kd_cut, colors[i % len(colors)], 0.55))
+        prev_cut = kd_cut
+    intervals.append((prev_cut, np.inf, "lightgray", 0.8))
+
+    # Fill each bar, splitting precisely where each cutoff line falls
+    for left_edge, right_edge, height in zip(bin_edges[:-1], bin_edges[1:], counts):
+        if height == 0:
+            continue
+        for a, b, color, alpha in intervals:
+            sub_left = max(left_edge, a)
+            sub_right = min(right_edge, b)
+            if sub_right > sub_left:
+                ax_hist.add_patch(
+                    Rectangle(
+                        (sub_left, 0), sub_right - sub_left, height,
+                        facecolor=color, alpha=alpha, edgecolor="none", zorder=2
+                    )
+                )
 
     ax_hist.set_xscale("log")
     max_y = max(counts) if len(counts) > 0 else 1
@@ -127,9 +144,9 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
     ax_hist.set_ylim(0, ylim_max)
     ax_hist.set_xlabel("Dissociation Constant ($K_d$) in Molar [Log Scale]", fontsize=12)
     ax_hist.set_ylabel("Number of Models (Frequency)", fontsize=12)
-    ax_hist.grid(axis="y", alpha=0.4, linestyle="--")
+    ax_hist.grid(axis="y", alpha=0.4, linestyle="--", zorder=1)
 
-    # Left panels: WebLogos (menor porcentaje abajo, mayor arriba)
+    # Left panels: WebLogos (smallest percentile at bottom, largest at top)
     logo_axes = []
     for i in range(n_pct):
         row_idx = n_pct - 1 - i
@@ -143,7 +160,7 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
     fig.canvas.draw()
     hist_box = ax_hist.get_position()
 
-    # 5. Flechas en "L" desde cada corte hacia su WebLogo
+    # 5. L-shaped arrows from each cutoff line to its corresponding WebLogo
     for i, (pct, kd_cutoff, ax_logo) in enumerate(zip(percentiles_sorted, cutoffs, logo_axes)):
         color = colors[i % len(colors)]
         logo_box = ax_logo.get_position()
@@ -152,7 +169,10 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
         frac_y = (logo_mid_y - hist_box.y0) / (hist_box.y1 - hist_box.y0)
         y_data = frac_y * ylim_max
 
-        ax_hist.plot([kd_cutoff, kd_cutoff], [0, y_data], color=color, linestyle="-", linewidth=1.8)
+        ax_hist.plot(
+            [kd_cutoff, kd_cutoff], [0, y_data],
+            color=color, linestyle="-", linewidth=1.8, zorder=4
+        )
 
         arrow = ConnectionPatch(
             xyA=(kd_cutoff, y_data), coordsA=ax_hist.transData,
@@ -169,7 +189,8 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
             fontsize=11,
             fontweight="bold",
             ha="right",
-            va="bottom"
+            va="bottom",
+            zorder=5
         )
 
     fig.suptitle(title, fontsize=16, fontweight="bold", y=0.98)
@@ -181,6 +202,7 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
             os.remove(f)
 
     print(f"\n[OK] Composite figure saved at: {img_out}\n")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generates a composite Kd histogram + stacked WebLogos figure.")

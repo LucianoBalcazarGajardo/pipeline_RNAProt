@@ -26,7 +26,7 @@ def generate_single_weblogo(df_subset, seq_col, tmp_fasta, tmp_png):
         "-f", tmp_fasta,
         "-o", tmp_png,
         "-F", "png",
-        "--resolution", "300",
+        "--resolution", "600",
         "--size", "large",
         "--units", "probability",
         "--sequence-type", "rna",
@@ -194,7 +194,7 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
         )
 
     fig.suptitle(title, fontsize=16, fontweight="bold", y=0.98)
-    plt.savefig(img_out, dpi=300, bbox_inches="tight")
+    plt.savefig(img_out, dpi=600, bbox_inches="tight")
     plt.close()
 
     for f in logo_files:

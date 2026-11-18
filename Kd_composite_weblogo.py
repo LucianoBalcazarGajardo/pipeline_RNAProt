@@ -89,66 +89,50 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
         if os.path.exists(tmp_fasta):
             os.remove(tmp_fasta)
 
-    # 4. Layout: WebLogos más grandes (izquierda) y histograma más compacto (derecha)
-    fig = plt.figure(figsize=(15, max(8, 3.0 * n_pct)))
+    # 4. Layout: ligeramente más grande para los WebLogos manteniendo la estructura original
+    fig = plt.figure(figsize=(15, max(7, 2.7 * n_pct)))
     gs = gridspec.GridSpec(
         n_pct, 2,
-        width_ratios=[1.8, 1.3],
-        wspace=0.14,
-        hspace=0.08
+        width_ratios=[1.35, 1.65],
+        wspace=0.16,
+        hspace=0.15
     )
 
-    # Right panel: Histograma sutil y sombreado completo bajo la curva
+    # Right panel: Histograma clásico con bordes negros
     ax_hist = fig.add_subplot(gs[:, 1])
     min_kd, max_kd = df_valid[target_col].min(), df_valid[target_col].max()
     if min_kd <= 0:
         min_kd = 1e-15
 
     log_min, log_max = np.log10(min_kd), np.log10(max_kd)
-    bins = np.logspace(log_min, log_max, 42)
+    bins = np.logspace(log_min, log_max, 40)
 
-    counts, bin_edges = np.histogram(df_valid[target_col], bins=bins)
-    bin_centers = np.sqrt(bin_edges[:-1] * bin_edges[1:])  # Media geométrica para escala log
+    counts, bin_edges, patches = ax_hist.hist(
+        df_valid[target_col], bins=bins, color="lightgray", edgecolor="black", alpha=0.8
+    )
 
-    # Sombreado suave de TODA el área bajo la curva + contorno discreto
-    ax_hist.fill_between(bin_centers, 0, counts, color="#d9d9d9", alpha=0.55)
-    ax_hist.plot(bin_centers, counts, color="#8c8c8c", linewidth=1.2, alpha=0.8)
+    # Colorear cada barra del histograma según el percentil al que pertenece
+    colors = ["#d62728", "#ff7f0e", "#1f77b4", "#9467bd", "#2ca02c"]
+    for left_edge, right_edge, patch in zip(bin_edges[:-1], bin_edges[1:], patches):
+        bin_center = np.sqrt(left_edge * right_edge)  # Centro geométrico en escala log
+        for i, kd_cut in enumerate(cutoffs):
+            if bin_center <= kd_cut:
+                patch.set_facecolor(colors[i % len(colors)])
+                patch.set_alpha(0.55)
+                break
 
     ax_hist.set_xscale("log")
     max_y = max(counts) if len(counts) > 0 else 1
     ylim_max = max_y * 1.25
     ax_hist.set_ylim(0, ylim_max)
+    ax_hist.set_xlabel("Dissociation Constant ($K_d$) in Molar [Log Scale]", fontsize=12)
+    ax_hist.set_ylabel("Number of Models (Frequency)", fontsize=12)
+    ax_hist.grid(axis="y", alpha=0.4, linestyle="--")
 
-    # Estética minimalista para restar protagonismo al histograma
-    ax_hist.spines["top"].set_visible(False)
-    ax_hist.spines["right"].set_visible(False)
-    ax_hist.spines["left"].set_color("#888888")
-    ax_hist.spines["bottom"].set_color("#888888")
-    ax_hist.tick_params(colors="#555555", labelsize=10)
-    ax_hist.set_xlabel("Dissociation Constant ($K_d$) in Molar [Log Scale]", fontsize=11, color="#333333")
-    ax_hist.set_ylabel("Number of Models (Frequency)", fontsize=11, color="#333333")
-    ax_hist.grid(axis="y", alpha=0.25, linestyle="--")
-
-    # Sombreado por franjas de percentil (sin solapar colores)
-    colors = ["#d62728", "#ff7f0e", "#1f77b4", "#9467bd", "#2ca02c"]
-    prev_cut = 0.0
-    for i, kd_cut in enumerate(cutoffs):
-        color = colors[i % len(colors)]
-        mask = (bin_centers >= prev_cut) & (bin_centers <= kd_cut)
-        if np.any(mask):
-            ax_hist.fill_between(
-                bin_centers, 0, counts,
-                where=mask,
-                color=color,
-                alpha=0.35,
-                interpolate=True
-            )
-        prev_cut = kd_cut
-
-    # Left panels: WebLogos maximizados
+    # Left panels: WebLogos (menor porcentaje abajo, mayor arriba)
     logo_axes = []
     for i in range(n_pct):
-        row_idx = n_pct - 1 - i  # Menor porcentaje abajo, mayor arriba
+        row_idx = n_pct - 1 - i
         ax_logo = fig.add_subplot(gs[row_idx, 0])
         if logo_files[i] and os.path.exists(logo_files[i]):
             img = mpimg.imread(logo_files[i])
@@ -172,14 +156,14 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
 
         arrow = ConnectionPatch(
             xyA=(kd_cutoff, y_data), coordsA=ax_hist.transData,
-            xyB=(1.01, 0.5), coordsB=ax_logo.transAxes,
-            arrowstyle="->", color=color, lw=1.8, mutation_scale=15, clip_on=False
+            xyB=(1.02, 0.5), coordsB=ax_logo.transAxes,
+            arrowstyle="->", color=color, lw=2.0, mutation_scale=16, clip_on=False
         )
         fig.add_artist(arrow)
 
         ax_hist.text(
             kd_cutoff,
-            y_data + ylim_max * 0.015,
+            y_data + ylim_max * 0.02,
             f" {pct:g}%",
             color=color,
             fontsize=11,

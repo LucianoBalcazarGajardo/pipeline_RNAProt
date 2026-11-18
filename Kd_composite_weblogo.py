@@ -27,7 +27,6 @@ def generate_single_weblogo(df_subset, seq_col, tmp_fasta, tmp_png):
         "-F", "png",
         "--resolution", "300",
         "--size", "large",
-        "--scale", "2",
         "--units", "probability",
         "--sequence-type", "rna",
         "--fineprint", ""
@@ -90,13 +89,13 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
         if os.path.exists(tmp_fasta):
             os.remove(tmp_fasta)
 
-    # 4. Build composite figure layout (Left: WebLogos, Right: Histogram)
-    fig = plt.figure(figsize=(15, max(6, 2.5 * n_pct)))
+    # 4. Build composite figure layout (Enhanced proportions: WebLogos got 40%, Hist got 60%)
+    fig = plt.figure(figsize=(15, max(7, 2.8 * n_pct)))
     gs = gridspec.GridSpec(
         n_pct, 2,
-        width_ratios=[1.1, 1.8],
-        wspace=0.18,
-        hspace=0.25
+        width_ratios=[1.4, 2.1], # Agrandamos el bloque de logos y achicamos el histograma
+        wspace=0.12,             # Acercamos las piezas para acortar las flechas
+        hspace=0.20
     )
 
     # Right panel: Histogram spanning all rows
@@ -106,10 +105,11 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
         min_kd = 1e-15
 
     log_min, log_max = np.log10(min_kd), np.log10(max_kd)
-    bins = np.logspace(log_min, log_max, 40)
+    bins = np.logspace(log_min, log_max, 42)
 
-    counts, _, _ = ax_hist.hist(
-        df_valid[target_col], bins=bins, color="lightgray", edgecolor="black", alpha=0.8
+    # Generamos el histograma base (en gris tenue de fondo)
+    counts, bin_edges, _ = ax_hist.hist(
+        df_valid[target_col], bins=bins, color="#e0e0e0", edgecolor="#b0b0b0", alpha=0.85
     )
     ax_hist.set_xscale("log")
     max_y = max(counts) if len(counts) > 0 else 1
@@ -117,9 +117,32 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
     ax_hist.set_ylim(0, ylim_max)
     ax_hist.set_xlabel("Dissociation Constant ($K_d$) in Molar [Log Scale]", fontsize=12)
     ax_hist.set_ylabel("Number of Models (Frequency)", fontsize=12)
-    ax_hist.grid(axis="y", alpha=0.4, linestyle="--")
+    ax_hist.grid(axis="y", alpha=0.3, linestyle="--")
 
-    # Left panels: WebLogos (index 0 at bottom, index n_pct-1 at top)
+    # Colors for cutoffs
+    colors = ["#d62728", "#ff7f0e", "#1f77b4", "#9467bd", "#2ca02c"]
+
+    # --- NUEVO: Shading de áreas bajo la curva (desde menor Kd hasta mayor Kd) ---
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    
+    # Pintamos del percentil más grande al más chico para que los solapamientos se vean ordenados
+    for i in reversed(range(n_pct)):
+        color = colors[i % len(colors)]
+        kd_cut = cutoffs[i]
+        
+        # Seleccionamos las barras que caen dentro de este percentil
+        in_percentile = bin_centers <= kd_cut
+        
+        # Sombreado translúcido y suave (alpha=0.18) bajo las barras del histograma
+        ax_hist.fill_between(
+            bin_centers, 0, counts,
+            where=in_percentile,
+            color=color,
+            alpha=0.18,
+            step="mid"
+        )
+
+    # Left panels: WebLogos
     logo_axes = []
     for i in range(n_pct):
         row_idx = n_pct - 1 - i  # Bottom-to-top ordering
@@ -130,12 +153,11 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
         ax_logo.axis("off")
         logo_axes.append(ax_logo)
 
-    # Force layout calculation so bounding boxes are exact
+    # Forzar cálculo de coordenadas
     fig.canvas.draw()
     hist_box = ax_hist.get_position()
 
-    # 5. Draw L-shaped arrows from histogram cutoffs to each WebLogo
-    colors = ["#d62728", "#ff7f0e", "#1f77b4", "#9467bd", "#2ca02c"]
+    # 5. Draw L-shaped arrows and line cutoffs
     for i, (pct, kd_cutoff, ax_logo) in enumerate(zip(percentiles_sorted, cutoffs, logo_axes)):
         color = colors[i % len(colors)]
         logo_box = ax_logo.get_position()
@@ -145,21 +167,21 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
         frac_y = (logo_mid_y - hist_box.y0) / (hist_box.y1 - hist_box.y0)
         y_data = frac_y * ylim_max
 
-        # Vertical line on the histogram from 0 up to the arrow level
-        ax_hist.plot([kd_cutoff, kd_cutoff], [0, y_data], color=color, linestyle="-", linewidth=1.8)
+        # Vertical line on the histogram
+        ax_hist.plot([kd_cutoff, kd_cutoff], [0, y_data], color=color, linestyle="-", linewidth=2.0)
 
         # Horizontal arrow pointing from the vertical line directly to the WebLogo
         arrow = ConnectionPatch(
             xyA=(kd_cutoff, y_data), coordsA=ax_hist.transData,
-            xyB=(1.02, 0.5), coordsB=ax_logo.transAxes,
-            arrowstyle="->", color=color, lw=2.0, mutation_scale=16, clip_on=False
+            xyB=(1.01, 0.5), coordsB=ax_logo.transAxes,
+            arrowstyle="->", color=color, lw=2.0, mutation_scale=15, clip_on=False
         )
         fig.add_artist(arrow)
 
-        # Percentage label placed right above the horizontal arrow (near the left edge of the histogram)
+        # Labels con el porcentaje justo encima del codo de la flecha
         ax_hist.text(
             kd_cutoff,
-            y_data + ylim_max * 0.02,
+            y_data + ylim_max * 0.015,
             f" {pct:g}%",
             color=color,
             fontsize=11,
@@ -172,7 +194,7 @@ def plot_composite(input_csv, img_out, percentiles, seq_col, title):
     plt.savefig(img_out, dpi=300, bbox_inches="tight")
     plt.close()
 
-    # Clean up temporary PNGs
+    # Clean up temporary files
     for f in logo_files:
         if f and os.path.exists(f):
             os.remove(f)
